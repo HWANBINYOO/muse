@@ -1,0 +1,5 @@
+{
+  "name": "SonicMuse AI",
+  "description": "분위기, 활동, 복잡한 음악 취향을 기반으로 개인화된 플레이리스트를 큐레이션해주는 초정밀 AI 음악 추천 엔진입니다.",
+  "requestFramePermissions": []
+}
