@@ -3,8 +3,26 @@ import { UserPreferences, SongRecommendation, SongConcept } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      const is429 = error?.status === 429 || error?.code === 429 || error?.message?.includes('429');
+      if (is429 && i < maxRetries - 1) {
+        const delay = Math.pow(2, i) * 2000; // 2s, 4s, 8s
+        console.warn(`Rate limited. Retrying in ${delay / 1000}s... (${i + 1}/${maxRetries})`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error("Max retries exceeded");
+}
+
 export const getMusicRecommendations = async (prefs: UserPreferences): Promise<SongRecommendation[]> => {
-  const model = "gemini-3-flash-preview";
+  const model = "gemini-2.0-flash";
 
   // Construct a prompt that enforces Korean output and numeric data
   const prompt = `
@@ -30,7 +48,7 @@ export const getMusicRecommendations = async (prefs: UserPreferences): Promise<S
     4. 반드시 유효한 JSON 형식으로만 응답하세요.
   `;
 
-  try {
+  return callWithRetry(async () => {
     const response = await ai.models.generateContent({
       model: model,
       contents: prompt,
@@ -65,14 +83,11 @@ export const getMusicRecommendations = async (prefs: UserPreferences): Promise<S
     }
 
     return JSON.parse(jsonText) as SongRecommendation[];
-  } catch (error) {
-    console.error("Gemini API Error:", error);
-    throw error;
-  }
+  });
 };
 
 export const generateSongConcept = async (theme: string): Promise<SongConcept> => {
-  const model = "gemini-3-flash-preview";
+  const model = "gemini-2.0-flash";
   
   const prompt = `
     당신은 프로듀서이자 전문 사운드 엔지니어입니다. DAW(Digital Audio Workstation)를 위한 세부 트랙 정보를 생성해야 합니다.
@@ -92,7 +107,7 @@ export const generateSongConcept = async (theme: string): Promise<SongConcept> =
     JSON 형식으로 응답하세요.
   `;
 
-  try {
+  return callWithRetry(async () => {
     const response = await ai.models.generateContent({
       model: model,
       contents: prompt,
@@ -116,10 +131,7 @@ export const generateSongConcept = async (theme: string): Promise<SongConcept> =
 
     const jsonText = response.text;
     if (!jsonText) throw new Error("데이터 생성 실패");
-    
+
     return JSON.parse(jsonText) as SongConcept;
-  } catch (error) {
-    console.error("Gemini Song Gen Error:", error);
-    throw error;
-  }
+  });
 }
